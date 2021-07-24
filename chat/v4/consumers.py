@@ -76,7 +76,7 @@ class ChatConsumer(JWTAsyncWebsocketConsumer):
             if is_already_ended:
                 auth_response_data["is_already_ended"] = is_already_ended
 
-            auth_response_data["room"] = await self.get_room_data(room)
+            auth_response_data["room"] = await self.get_room_data(room, me)
 
             # 不適切チェッカー
             self.inappropriate_checker = await self.create_inappropriate_checker(
@@ -200,8 +200,11 @@ class ChatConsumer(JWTAsyncWebsocketConsumer):
 
     async def end_talk(self, event):
         try:
-            appended_data = event["context"]
             data = {"type": "end_talk"}
+            room = await self.get_room()
+            me = await self.get_user(self.me_id)
+            room_data = await self.get_room_data(room, me)
+            appended_data = {"room": room_data}
             data.update(appended_data)
             await self.send(text_data=json.dumps(data))
         except Exception as e:
@@ -235,8 +238,8 @@ class ChatConsumer(JWTAsyncWebsocketConsumer):
         return self.inappropriate_checker.check(text, shouldSendSlack=True)
 
     @database_sync_to_async
-    def get_room_data(self, room):
-        return RoomSerializer(room).data
+    def get_room_data(self, room, me):
+        return RoomSerializer(room, context={"me": me}).data
 
     @database_sync_to_async
     def get_receiver_list(self, sender, room):
@@ -315,16 +318,13 @@ class ChatConsumer(JWTAsyncWebsocketConsumer):
             traceback.print_exc()
 
     @classmethod
-    def send_end_talk(cls, room_id, room_data):
+    def send_end_talk(cls, room_id):
         group_name = cls.get_group_name(room_id)
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
             group_name,
             {
                 "type": "end_talk",
-                "context": {
-                    "room": room_data,
-                },
             },
         )
 
