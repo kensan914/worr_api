@@ -14,6 +14,7 @@ class RoomV4Admin(admin.ModelAdmin):
         "format_left_members",
         "format_closed_members",
         "is_exclude_different_gender",
+        "is_private",
         "created_at",
         "format_is_talking",
         "is_active",

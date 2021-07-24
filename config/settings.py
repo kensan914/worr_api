@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "django_cleanup",
     "channels",
     "stdimage",
+    "drf_yasg",
 ]
 
 MIDDLEWARE = [
@@ -194,3 +195,11 @@ CHANNEL_LAYERS = {
 
 # Slack webhooks URL (git管理するとリジェクトされて使用禁止になるため.envで管理)
 SLACK_WEBHOOKS_FULLFII_BOT_URL = env("SLACK_WEBHOOKS_FULLFII_BOT_URL", default="")
+
+
+# for drf-yasg
+SWAGGER_SETTINGS = {
+    "USE_SESSION_AUTH": False,
+    "DEFAULT_MODEL_RENDERING": "example",
+    "TAGS_SORTER": "alpha",
+}

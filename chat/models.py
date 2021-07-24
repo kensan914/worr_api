@@ -76,6 +76,7 @@ class RoomV4(models.Model):
     is_exclude_different_gender = models.BooleanField(
         verbose_name="異性を禁止", default=False
     )
+    is_private = models.BooleanField(verbose_name="プライベートルーム", default=False)
     created_at = models.DateTimeField(verbose_name="作成時間", default=timezone.now)
     is_end = models.BooleanField(verbose_name="終了状態", default=False)  # 1人でも退室したらTrue
     is_active = models.BooleanField(

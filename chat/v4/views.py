@@ -1,3 +1,9 @@
+from asgiref.sync import async_to_sync
+from drf_yasg.utils import swagger_auto_schema
+
+from account.models_ex import AccountEx
+from fullfii.lib.constants import api_class
+from fullfii.lib.firebase import send_fcm
 from main.v4.consumers import NotificationConsumer
 from account.models import Account, Gender
 from django.db.models import Q
@@ -5,7 +11,6 @@ from rest_framework import views, status
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
-
 from chat.models import RoomV4
 from chat.v4.serializers import RoomSerializer
 from chat.v4.consumers import ChatConsumer
@@ -13,12 +18,21 @@ from fullfii.db.chat import get_created_rooms, get_participating_rooms
 
 
 class TalkInfoAPIView(views.APIView):
+    @swagger_auto_schema(
+        operation_summary="トーク情報(参加ルーム・作成ルーム)の取得",
+        operation_id="talk_info_GET",
+        tags=[api_class.API_CLS_ME],
+    )
     def get(self, request, *args, **kwargs):
         created_rooms = get_created_rooms(request.user)
-        created_rooms_serializer = RoomSerializer(created_rooms, many=True)
+        created_rooms_serializer = RoomSerializer(
+            created_rooms, many=True, context={"me": request.user}
+        )
 
         participating_rooms = get_participating_rooms(request.user)
-        participating_rooms_serializer = RoomSerializer(participating_rooms, many=True)
+        participating_rooms_serializer = RoomSerializer(
+            participating_rooms, many=True, context={"me": request.user}
+        )
 
         return Response(
             {
@@ -29,12 +43,17 @@ class TalkInfoAPIView(views.APIView):
         )
 
 
-talkInfoAPIView = TalkInfoAPIView.as_view()
+talk_info_api_view = TalkInfoAPIView.as_view()
 
 
 class RoomsAPIView(views.APIView):
     paginate_by = 10
 
+    @swagger_auto_schema(
+        operation_summary="ルームの取得",
+        operation_id="rooms_GET",
+        tags=[api_class.API_CLS_ROOM],
+    )
     def get(self, request, *args, **kwargs):
         """
         10単位でroomを取得. クエリパラメータ"page"でページ指定.
@@ -101,6 +120,9 @@ class RoomsAPIView(views.APIView):
             | Q(owner__in=request.user.block_me_accounts.all())
         )
 
+        # プライベートルームはroomsに含めない
+        rooms = rooms.exclude(is_private=True)
+
         # to create id_list will be faster
         id_list = list(
             rooms[self.paginate_by * (page - 1) : self.paginate_by * page].values_list(
@@ -109,16 +131,20 @@ class RoomsAPIView(views.APIView):
         )
         rooms = [rooms.get(id=pk) for pk in id_list]
 
-        serializer = RoomSerializer(rooms, many=True)
+        serializer = RoomSerializer(rooms, many=True)  # TODO: context指定するべきか
         return Response(
             {"rooms": serializer.data, "has_more": not (len(rooms) < self.paginate_by)},
             status.HTTP_200_OK,
         )
 
+    @swagger_auto_schema(
+        operation_summary="ルームの登録",
+        operation_id="rooms_POST",
+        tags=[api_class.API_CLS_ROOM],
+    )
     def post(self, request, *args, **kwargs):
-        """
-        roomを作成
-        """
+        """"""
+
         # 既に会話中の作成ルームが存在した場合、中断
         if RoomV4.objects.filter(owner=request.user, is_end=False).exists():
             return Response(
@@ -137,6 +163,29 @@ class RoomsAPIView(views.APIView):
         room_serializer = RoomSerializer(data=post_data)
         if room_serializer.is_valid():
             room_serializer.save()
+
+            # プライベートルーム作成時通知
+            if not request.user.is_ban:
+                favorite_user_ids = (
+                    request.user.owner_favorite_user_relationship.all().values_list(
+                        "favorite_account", flat=True
+                    )
+                )
+                favorite_users = Account.objects.filter(id__in=favorite_user_ids)
+                for receiver in favorite_users:
+                    # ブロックしていたりされていた場合, 通知しない
+                    if (
+                        not request.user in receiver.blocked_accounts.all()
+                        and not request.user in receiver.block_me_accounts.all()
+                    ):
+                        async_to_sync(send_fcm)(
+                            receiver,
+                            {
+                                "type": "CREATE_PRIVATE_ROOM",
+                                "sender": request.user,
+                            },
+                        )
+
             return Response(data=room_serializer.data, status=status.HTTP_201_CREATED)
         else:
             return Response(
@@ -144,10 +193,15 @@ class RoomsAPIView(views.APIView):
             )
 
 
-roomsAPIView = RoomsAPIView.as_view()
+rooms_api_view = RoomsAPIView.as_view()
 
 
-class RoomAPIView(views.APIView):
+class RoomsDetailAPIView(views.APIView):
+    @swagger_auto_schema(
+        operation_summary="ルームの修正",
+        operation_id="rooms_detail_PATCH",
+        tags=[api_class.API_CLS_ROOM],
+    )
     def patch(self, request, *args, **kwargs):
         """
         roomを編集 (room作成者のみ, 既に参加者がいる場合編集禁止)
@@ -182,17 +236,23 @@ class RoomAPIView(views.APIView):
                 data=room_serializer.errors, status=status.HTTP_409_CONFLICT
             )
 
+    @swagger_auto_schema(
+        operation_summary="ルームの削除",
+        operation_id="rooms_detail_DELETE",
+        tags=[api_class.API_CLS_ROOM],
+    )
     def delete(self, request, *args, **kwargs):
         """
         roomを削除 (room作成者のみ)
         """
+
         room_id = self.kwargs.get("room_id")
         room = get_object_or_404(RoomV4, id=room_id)
 
         if room.owner.id != request.user.id:
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        validate_result_member_id = RoomLeftMembersAPIView.validate_member_id(
+        validate_result_member_id = RoomsDetailLeftMembersAPIView.validate_member_id(
             request.user.id, room
         )
         if validate_result_member_id is not None:
@@ -201,25 +261,29 @@ class RoomAPIView(views.APIView):
 
         # left room
         room.left_members.add(request.user.id)
-        RoomLeftMembersAPIView.check_and_end_room(room)
+        RoomsDetailLeftMembersAPIView.check_and_end_room(room)
 
         # close room
         room.closed_members.add(request.user.id)
-        RoomClosedMembersAPIView.check_and_deactive_room(room)
+        RoomsDetailClosedMembersAPIView.check_and_deactive_room(room)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-roomAPIView = RoomAPIView.as_view()
+rooms_detail_api_view = RoomsDetailAPIView.as_view()
 
 
-class RoomImagesAPIView(views.APIView):
+class RoomsDetailImagesAPIView(views.APIView):
     parser_classes = [MultiPartParser]
 
+    @swagger_auto_schema(
+        operation_summary="ルーム画像の登録",
+        operation_id="rooms_detail_images_POST",
+        tags=[api_class.API_CLS_ROOM],
+    )
     def post(self, request, *args, **kwargs):
-        """
-        room imageをPOST
-        """
+        """"""
+
         room_id = self.kwargs.get("room_id")
         room = get_object_or_404(RoomV4, id=room_id)
 
@@ -230,17 +294,20 @@ class RoomImagesAPIView(views.APIView):
         room_serializer = RoomSerializer(instance=room, data=request_data, partial=True)
         if room_serializer.is_valid():
             room_serializer.save()
-            return Response(data=RoomSerializer(room).data, status=status.HTTP_200_OK)
+            return Response(
+                data=RoomSerializer(room, context={"me": request.user}).data,
+                status=status.HTTP_200_OK,
+            )
         else:
             return Response(
                 data=room_serializer.errors, status=status.HTTP_409_CONFLICT
             )
 
 
-roomImagesAPIView = RoomImagesAPIView.as_view()
+rooms_detail_images_api_view = RoomsDetailImagesAPIView.as_view()
 
 
-class RoomParticipantsAPIView(views.APIView):
+class RoomsDetailParticipantsAPIView(views.APIView):
     @classmethod
     def validate_account_id(cls, _account_id, request):
         # ユーザが見つからない
@@ -254,10 +321,14 @@ class RoomParticipantsAPIView(views.APIView):
         # success
         return
 
+    @swagger_auto_schema(
+        operation_summary="ルームへの参加",
+        operation_id="rooms_detail_participants_POST",
+        tags=[api_class.API_CLS_ROOM],
+    )
     def post(self, request, *args, **kwargs):
-        """
-        roomへの参加
-        """
+        """"""
+
         room_id = self.kwargs.get("room_id")
         room = get_object_or_404(RoomV4, id=room_id)
 
@@ -321,7 +392,7 @@ class RoomParticipantsAPIView(views.APIView):
             return Response(status=status.HTTP_400_BAD_REQUEST)
         account_id = request.data["account_id"]
 
-        validate_result = RoomParticipantsAPIView.validate_account_id(
+        validate_result = RoomsDetailParticipantsAPIView.validate_account_id(
             account_id, request
         )
         if validate_result is not None:
@@ -333,7 +404,7 @@ class RoomParticipantsAPIView(views.APIView):
 
         room.participants.add(account_id)
         room.save()
-        room_data = RoomSerializer(room).data
+        room_data = RoomSerializer(room, context={"me": request.user}).data
 
         # ownerへSOMEONE_PARTICIPATED通知
         NotificationConsumer.send_notification_someone_participated(
@@ -346,10 +417,10 @@ class RoomParticipantsAPIView(views.APIView):
         return Response(data=room_data, status=status.HTTP_200_OK)
 
 
-roomParticipantsAPIView = RoomParticipantsAPIView.as_view()
+rooms_detail_participants_api_view = RoomsDetailParticipantsAPIView.as_view()
 
 
-class RoomLeftMembersAPIView(views.APIView):
+class RoomsDetailLeftMembersAPIView(views.APIView):
     @classmethod
     def validate_member_id(cls, _member_id, _room):
         # roomのメンバーではない
@@ -370,12 +441,16 @@ class RoomLeftMembersAPIView(views.APIView):
             _room.is_end = True
             # メンバー全員にend chat通知
             if _room.participants.count() > 0:
-                ChatConsumer.send_end_talk(_room.id, RoomSerializer(_room).data)
+                ChatConsumer.send_end_talk(_room.id)
         _room.save()
 
+    @swagger_auto_schema(
+        operation_summary="メンバー(作成者含む)のroomからの退室",
+        operation_id="rooms_detail_left_members_POST",
+        tags=[api_class.API_CLS_ROOM],
+    )
     def post(self, request, *args, **kwargs):
         """
-        メンバー(作成者含む)のroomからの退室.
         退室の定義：トークをすることはできないが, フロントにroom情報は保持していてトークが完全に終了した状態ではない.
         """
         room_id = self.kwargs.get("room_id")
@@ -385,14 +460,14 @@ class RoomLeftMembersAPIView(views.APIView):
             return Response(status=status.HTTP_400_BAD_REQUEST)
         account_id = request.data["account_id"]
 
-        validate_result_account_id = RoomParticipantsAPIView.validate_account_id(
+        validate_result_account_id = RoomsDetailParticipantsAPIView.validate_account_id(
             account_id, request
         )
         if validate_result_account_id is not None:
             # validation error account_id
             return validate_result_account_id
 
-        validate_result_member_id = RoomLeftMembersAPIView.validate_member_id(
+        validate_result_member_id = RoomsDetailLeftMembersAPIView.validate_member_id(
             account_id, room
         )
         if validate_result_member_id is not None:
@@ -400,7 +475,7 @@ class RoomLeftMembersAPIView(views.APIView):
             return validate_result_member_id
 
         room.left_members.add(account_id)
-        RoomLeftMembersAPIView.check_and_end_room(room)
+        RoomsDetailLeftMembersAPIView.check_and_end_room(room)
 
         # send 退室メッセ―ジ
         leave_message = (
@@ -411,13 +486,16 @@ class RoomLeftMembersAPIView(views.APIView):
                 room_id=room_id, text=leave_message, sender=request.user
             )
 
-        return Response(data=RoomSerializer(room).data, status=status.HTTP_200_OK)
+        return Response(
+            data=RoomSerializer(room, context={"me": request.user}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
-roomLeftMembersAPIView = RoomLeftMembersAPIView.as_view()
+rooms_detail_left_members_api_view = RoomsDetailLeftMembersAPIView.as_view()
 
 
-class RoomClosedMembersAPIView(views.APIView):
+class RoomsDetailClosedMembersAPIView(views.APIView):
     @classmethod
     def check_and_deactive_room(cls, _room):
         # 全員クローズしたら, ルームを非活性
@@ -426,9 +504,13 @@ class RoomClosedMembersAPIView(views.APIView):
             _room.is_active = False
         _room.save()
 
+    @swagger_auto_schema(
+        operation_summary="メンバー(作成者含む)のroomのクローズ",
+        operation_id="rooms_detail_closed_members_POST",
+        tags=[api_class.API_CLS_ROOM],
+    )
     def post(self, request, *args, **kwargs):
         """
-        メンバー(作成者含む)のroomのクローズ.
         クローズの定義：フロントからroom情報を完全に削除して相談を完全に終了すること.
         """
         room_id = self.kwargs.get("room_id")
@@ -438,14 +520,14 @@ class RoomClosedMembersAPIView(views.APIView):
             return Response(status=status.HTTP_400_BAD_REQUEST)
         account_id = request.data["account_id"]
 
-        validate_result_account_id = RoomParticipantsAPIView.validate_account_id(
+        validate_result_account_id = RoomsDetailParticipantsAPIView.validate_account_id(
             account_id, request
         )
         if validate_result_account_id is not None:
             # validation error account_id
             return validate_result_account_id
 
-        validate_result_member_id = RoomLeftMembersAPIView.validate_member_id(
+        validate_result_member_id = RoomsDetailLeftMembersAPIView.validate_member_id(
             account_id, room
         )
         if validate_result_member_id is not None:
@@ -453,9 +535,73 @@ class RoomClosedMembersAPIView(views.APIView):
             return validate_result_member_id
 
         room.closed_members.add(account_id)
-        RoomClosedMembersAPIView.check_and_deactive_room(room)
+        RoomsDetailClosedMembersAPIView.check_and_deactive_room(room)
+
+        account = get_object_or_404(Account, id=account_id)
+        AccountEx.increment_num_of_talk(account, room)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-roomClosedMembersAPIView = RoomClosedMembersAPIView.as_view()
+rooms_detail_closed_members_api_view = RoomsDetailClosedMembersAPIView.as_view()
+
+
+class PrivateRoomsAPIView(views.APIView):
+    paginate_by = 10
+
+    @swagger_auto_schema(
+        operation_summary="プライベートルームの取得",
+        operation_id="private_rooms_GET",
+        tags=[api_class.API_CLS_ROOM],
+    )
+    def get(self, request, *args, **kwargs):
+        _page = self.request.GET.get("page")
+        page = int(_page) if _page is not None and _page.isdecimal() else 1
+
+        # 自分と話したいと思ってくれているユーザ
+        private_user_ids = (
+            request.user.favorite_account_favorite_user_relationship.all().values_list(
+                "owner", flat=True
+            )
+        )
+        private_rooms = RoomV4.objects.filter(
+            owner__in=private_user_ids,
+            is_private=True,
+            is_active=True,
+            is_end=False,
+            owner__is_active=True,
+        ).exclude(
+            Q(owner=request.user)
+            | Q(participants=request.user)
+            | Q(id__in=request.user.hidden_rooms.all())
+            | Q(id__in=request.user.blocked_rooms.all())
+        )
+
+        # 凍結されているユーザは表示しない
+        private_rooms = private_rooms.exclude(owner__is_ban=True)
+
+        # ブロックしているユーザ, ブロックされているユーザを表示しない
+        private_rooms = private_rooms.exclude(
+            Q(owner__in=request.user.blocked_accounts.all())
+            | Q(owner__in=request.user.block_me_accounts.all())
+        )
+
+        # to create id_list will be faster
+        id_list = list(
+            private_rooms[
+                self.paginate_by * (page - 1) : self.paginate_by * page
+            ].values_list("id", flat=True)
+        )
+        private_rooms = [private_rooms.get(id=pk) for pk in id_list]
+
+        serializer = RoomSerializer(private_rooms, many=True)  # TODO: context指定
+        return Response(
+            {
+                "private_rooms": serializer.data,
+                "has_more": not (len(private_rooms) < self.paginate_by),
+            },
+            status.HTTP_200_OK,
+        )
+
+
+private_rooms_api_view = PrivateRoomsAPIView.as_view()

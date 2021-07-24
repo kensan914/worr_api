@@ -98,9 +98,9 @@ class Gender(models.TextChoices):
 class Job(models.TextChoices):
     HS_STUDENT = "hs-student", "高校生"
     COLLEGE_STUDENT = "college-student", "大学生"
-    HOUSEWIFE = "housewife", "主婦"
+    HOUSEWIFE = "housewife", "主婦／主夫"
+    WORKER = "worker", "会社員"
     FREETER = "freeter", "フリーター"
-    # SOCIETY = 'society', '社会人'
     OTHER = "other", "その他"
     SECRET = "secret", "内緒"
 
@@ -136,6 +136,9 @@ class Account(AbstractBaseUser):
     device_token = models.CharField(
         verbose_name="デバイストークン", max_length=200, null=True, blank=True
     )
+    num_of_owner = models.IntegerField(verbose_name="オーナーとしての会話回数", default=0)
+    num_of_participated = models.IntegerField(verbose_name="参加者としての会話回数", default=0)
+    is_private_profile = models.BooleanField(verbose_name="プロフィール非公開", default=True)
     is_active = models.BooleanField(verbose_name="アクティブ状態", default=True)
     is_ban = models.BooleanField(
         verbose_name="凍結状態 (凍結/凍結解除する際はここをTrue/Falseに)", default=False
@@ -161,6 +164,14 @@ class Account(AbstractBaseUser):
         blank=True,
         symmetrical=False,
         related_name="block_me_accounts",
+    )
+    favorite_users = models.ManyToManyField(
+        "self",
+        verbose_name="また話したいユーザ",
+        blank=True,
+        symmetrical=False,
+        related_name="favorite_me_accounts",
+        through="FavoriteUserRelationship",
     )
 
     is_staff = models.BooleanField(default=False)
@@ -260,6 +271,30 @@ class ProfileImage(models.Model):
 
     def __str__(self):
         return str(self.user)
+
+
+class FavoriteUserRelationship(models.Model):
+    class Meta:
+        verbose_name = verbose_name_plural = "また話したいユーザ中間テーブル"
+        ordering = ("-created_at",)
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(
+        "Account",
+        verbose_name="また話したいと思った人",
+        on_delete=models.CASCADE,
+        related_name="owner_favorite_user_relationship",
+    )
+    favorite_account = models.ForeignKey(
+        "Account",
+        verbose_name="また話したいと思われた人",
+        on_delete=models.CASCADE,
+        related_name="favorite_account_favorite_user_relationship",
+    )
+    created_at = models.DateTimeField(verbose_name="登録日", default=timezone.now)
+
+    def __str__(self):
+        return str(self.owner.username)
 
 
 class IapStatus(models.TextChoices):

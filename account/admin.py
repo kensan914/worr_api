@@ -20,9 +20,16 @@ class AccountAdmin(admin.ModelAdmin):
     search_fields = ("username",)
     date_hierarchy = "date_joined"
     list_filter = ("gender", "is_secret_gender", "job", "is_active", "is_ban")
+    raw_id_fields = (
+        "hidden_rooms",
+        "blocked_rooms",
+        "blocked_accounts",
+        "favorite_users",
+    )
     filter_horizontal = (
         "genre_of_worries",
         "blocked_accounts",
+        "favorite_users",
         "talked_accounts",
         "hidden_rooms",
         "blocked_rooms",
