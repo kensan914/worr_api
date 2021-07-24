@@ -1,6 +1,5 @@
 from asgiref.sync import async_to_sync
 from drf_yasg.utils import swagger_auto_schema
-
 from account.models_ex import AccountEx
 from fullfii.lib.constants import api_class
 from fullfii.lib.firebase import send_fcm
@@ -163,9 +162,10 @@ class RoomsAPIView(views.APIView):
         room_serializer = RoomSerializer(data=post_data)
         if room_serializer.is_valid():
             room_serializer.save()
+            room_data = room_serializer.data
 
             # プライベートルーム作成時通知
-            if not request.user.is_ban:
+            if not request.user.is_ban and room_data["is_private"]:
                 favorite_user_ids = (
                     request.user.owner_favorite_user_relationship.all().values_list(
                         "favorite_account", flat=True
@@ -186,7 +186,7 @@ class RoomsAPIView(views.APIView):
                             },
                         )
 
-            return Response(data=room_serializer.data, status=status.HTTP_201_CREATED)
+            return Response(data=room_data, status=status.HTTP_201_CREATED)
         else:
             return Response(
                 data=room_serializer.errors, status=status.HTTP_409_CONFLICT
