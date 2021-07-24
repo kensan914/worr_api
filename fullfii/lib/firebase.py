@@ -106,7 +106,7 @@ async def fcm_reducer(to_user, action):
     elif action["type"] == "CREATE_PRIVATE_ROOM":
         # action {type, sender}
         result["title"] = ""
-        result["body"] = "{}さんが新たにルームを作成しました！".format(str(action["sender"]))
+        result["body"] = "{}さんがプライベートルームを作成しました！".format(str(action["sender"]))
     else:
         return
 
