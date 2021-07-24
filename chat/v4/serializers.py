@@ -25,6 +25,7 @@ class RoomSerializer(serializers.ModelSerializer):
             "created_at",
             "is_end",
             "is_active",
+            "added_favorite_user_ids",
         )
         read_only_fields = ("id", "created_at", "is_end", "is_active", "image")
 
@@ -39,6 +40,7 @@ class RoomSerializer(serializers.ModelSerializer):
     participants = UserSerializer(many=True, required=False)
     left_members = UserSerializer(many=True, required=False)
     created_at = serializers.SerializerMethodField()
+    added_favorite_user_ids = serializers.SerializerMethodField()
 
     def get_image(self, obj):
         if obj.image:
@@ -58,6 +60,36 @@ class RoomSerializer(serializers.ModelSerializer):
     def get_created_at(self, obj):
         if obj.created_at:
             return obj.created_at.strftime("%Y/%m/%d %H:%M:%S")
+
+    def get_added_favorite_user_ids(self, obj):
+        if "me" in self.context:
+            favorite_user_relationship = (
+                self.context["me"]
+                .owner_favorite_user_relationship.all()
+                .order_by("-created_at")
+            )
+            favorite_users_ids = favorite_user_relationship.values_list(
+                "favorite_account", flat=True
+            )
+            # このルームに該当するfavorite usersをフィルター
+            target_favorite_users_ids = list(
+                filter(
+                    lambda favorite_user_id: favorite_user_id == obj.owner.id
+                    or favorite_user_id
+                    in obj.participants.values_list("id", flat=True),
+                    list(favorite_users_ids),
+                )
+            )
+
+            # UUIDオブジェクトをstrに変換
+            return list(
+                map(
+                    lambda favorite_user_id: str(favorite_user_id),
+                    target_favorite_users_ids,
+                )
+            )
+        else:  # 自身が直接関係しないルーム
+            return []
 
     def create(self, validated_date):
         validated_date["owner"] = validated_date.get("owner_id", None)

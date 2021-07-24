@@ -69,7 +69,7 @@ class UserSerializer(serializers.ModelSerializer):
             "image",
             "num_of_owner",
             "num_of_participated",
-            "is_public",
+            "is_private_profile",
         )
 
     name = serializers.SerializerMethodField()
@@ -135,7 +135,7 @@ class MeSerializer(UserSerializer):
             "is_ban",
             "num_of_owner",
             "num_of_participated",
-            "is_public",
+            "is_private_profile",
         )
 
     me = serializers.BooleanField(default=True, read_only=True)
@@ -144,7 +144,7 @@ class MeSerializer(UserSerializer):
 class PatchMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
-        fields = ("name", "introduction", "device_token", "job", "is_public")
+        fields = ("name", "introduction", "device_token", "job", "is_private_profile")
 
     name = serializers.CharField(source="username")
 

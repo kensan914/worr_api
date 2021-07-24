@@ -138,7 +138,7 @@ class Account(AbstractBaseUser):
     )
     num_of_owner = models.IntegerField(verbose_name="オーナーとしての会話回数", default=0)
     num_of_participated = models.IntegerField(verbose_name="参加者としての会話回数", default=0)
-    is_public = models.BooleanField(verbose_name="プロフィール公開", default=True)
+    is_private_profile = models.BooleanField(verbose_name="プロフィール非公開", default=True)
     is_active = models.BooleanField(verbose_name="アクティブ状態", default=True)
     is_ban = models.BooleanField(
         verbose_name="凍結状態 (凍結/凍結解除する際はここをTrue/Falseに)", default=False

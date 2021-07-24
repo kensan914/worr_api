@@ -1,3 +1,4 @@
+from asgiref.sync import async_to_sync
 from drf_yasg.utils import swagger_auto_schema
 
 from account.models_ex import AccountEx
@@ -24,10 +25,14 @@ class TalkInfoAPIView(views.APIView):
     )
     def get(self, request, *args, **kwargs):
         created_rooms = get_created_rooms(request.user)
-        created_rooms_serializer = RoomSerializer(created_rooms, many=True)
+        created_rooms_serializer = RoomSerializer(
+            created_rooms, many=True, context={"me": request.user}
+        )
 
         participating_rooms = get_participating_rooms(request.user)
-        participating_rooms_serializer = RoomSerializer(participating_rooms, many=True)
+        participating_rooms_serializer = RoomSerializer(
+            participating_rooms, many=True, context={"me": request.user}
+        )
 
         return Response(
             {
@@ -126,7 +131,7 @@ class RoomsAPIView(views.APIView):
         )
         rooms = [rooms.get(id=pk) for pk in id_list]
 
-        serializer = RoomSerializer(rooms, many=True)
+        serializer = RoomSerializer(rooms, many=True)  # TODO: context指定するべきか
         return Response(
             {"rooms": serializer.data, "has_more": not (len(rooms) < self.paginate_by)},
             status.HTTP_200_OK,
@@ -173,7 +178,7 @@ class RoomsAPIView(views.APIView):
                         not request.user in receiver.blocked_accounts.all()
                         and not request.user in receiver.block_me_accounts.all()
                     ):
-                        send_fcm(
+                        async_to_sync(send_fcm)(
                             receiver,
                             {
                                 "type": "CREATE_PRIVATE_ROOM",
@@ -289,7 +294,10 @@ class RoomsDetailImagesAPIView(views.APIView):
         room_serializer = RoomSerializer(instance=room, data=request_data, partial=True)
         if room_serializer.is_valid():
             room_serializer.save()
-            return Response(data=RoomSerializer(room).data, status=status.HTTP_200_OK)
+            return Response(
+                data=RoomSerializer(room, context={"me": request.user}).data,
+                status=status.HTTP_200_OK,
+            )
         else:
             return Response(
                 data=room_serializer.errors, status=status.HTTP_409_CONFLICT
@@ -396,7 +404,7 @@ class RoomsDetailParticipantsAPIView(views.APIView):
 
         room.participants.add(account_id)
         room.save()
-        room_data = RoomSerializer(room).data
+        room_data = RoomSerializer(room, context={"me": request.user}).data
 
         # ownerへSOMEONE_PARTICIPATED通知
         NotificationConsumer.send_notification_someone_participated(
@@ -433,7 +441,7 @@ class RoomsDetailLeftMembersAPIView(views.APIView):
             _room.is_end = True
             # メンバー全員にend chat通知
             if _room.participants.count() > 0:
-                ChatConsumer.send_end_talk(_room.id, RoomSerializer(_room).data)
+                ChatConsumer.send_end_talk(_room.id)
         _room.save()
 
     @swagger_auto_schema(
@@ -478,7 +486,10 @@ class RoomsDetailLeftMembersAPIView(views.APIView):
                 room_id=room_id, text=leave_message, sender=request.user
             )
 
-        return Response(data=RoomSerializer(room).data, status=status.HTTP_200_OK)
+        return Response(
+            data=RoomSerializer(room, context={"me": request.user}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 rooms_detail_left_members_api_view = RoomsDetailLeftMembersAPIView.as_view()
@@ -583,7 +594,7 @@ class PrivateRoomsAPIView(views.APIView):
         )
         private_rooms = [private_rooms.get(id=pk) for pk in id_list]
 
-        serializer = RoomSerializer(private_rooms, many=True)
+        serializer = RoomSerializer(private_rooms, many=True)  # TODO: context指定
         return Response(
             {
                 "private_rooms": serializer.data,
