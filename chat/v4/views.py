@@ -18,7 +18,7 @@ from fullfii.db.chat import get_created_rooms, get_participating_rooms
 
 class TalkInfoAPIView(views.APIView):
     @swagger_auto_schema(
-        operation_summary="トーク情報(参加ルーム・作成ルーム)の取得",
+        operation_summary="トーク情報(参加ルーム・作成ルーム・お気に入りユーザの有無)の取得",
         operation_id="talk_info_GET",
         tags=[api_class.API_CLS_ME],
     )
@@ -33,10 +33,13 @@ class TalkInfoAPIView(views.APIView):
             participating_rooms, many=True, context={"me": request.user}
         )
 
+        has_favorite_user = request.user.owner_favorite_user_relationship.all().exists()
+
         return Response(
             {
                 "created_rooms": created_rooms_serializer.data,
                 "participating_rooms": participating_rooms_serializer.data,
+                "has_favorite_user": has_favorite_user,
             },
             status=status.HTTP_200_OK,
         )

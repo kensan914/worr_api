@@ -391,7 +391,12 @@ class FavoritesUsersDetailAPIView(views.APIView):
             favorite_user_relationship = favorite_user_relationships.first()
             favorite_user_relationship.delete()
 
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        has_favorite_user = request.user.owner_favorite_user_relationship.all().exists()
+
+        return Response(
+            data={"has_favorite_user": has_favorite_user},
+            status=status.HTTP_200_OK,
+        )
 
 
 favorites_users_detail_api_view = FavoritesUsersDetailAPIView.as_view()
