@@ -10,15 +10,16 @@ from rest_framework import views, status
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
-from chat.models import RoomV4
+from chat.models import RoomV4, Tag
 from chat.v4.serializers import RoomSerializer
 from chat.v4.consumers import ChatConsumer
 from fullfii.db.chat import get_created_rooms, get_participating_rooms
+from rest_framework import serializers
 
 
 class TalkInfoAPIView(views.APIView):
     @swagger_auto_schema(
-        operation_summary="トーク情報(参加ルーム・作成ルーム)の取得",
+        operation_summary="トーク情報(参加ルーム・作成ルーム・お気に入りユーザの有無)の取得",
         operation_id="talk_info_GET",
         tags=[api_class.API_CLS_ME],
     )
@@ -33,10 +34,13 @@ class TalkInfoAPIView(views.APIView):
             participating_rooms, many=True, context={"me": request.user}
         )
 
+        has_favorite_user = request.user.owner_favorite_user_relationship.all().exists()
+
         return Response(
             {
                 "created_rooms": created_rooms_serializer.data,
                 "participating_rooms": participating_rooms_serializer.data,
+                "has_favorite_user": has_favorite_user,
             },
             status=status.HTTP_200_OK,
         )
@@ -106,12 +110,12 @@ class RoomsAPIView(views.APIView):
                 owner__gender=Gender.FEMALE, owner__is_secret_gender=False
             )
 
-        # 女性の場合, 凍結ユーザは表示されない
-        if (
-            request.user.gender == Gender.FEMALE
-            and request.user.is_secret_gender == False
-        ):
-            rooms = rooms.exclude(owner__is_ban=True)
+        # 凍結ユーザは表示されない (過去女性のみに非表示だったが、男性等にも非表示にしたくなったため)
+        # if (
+        #     request.user.gender == Gender.FEMALE
+        #     and request.user.is_secret_gender == False
+        # ):
+        rooms = rooms.exclude(owner__is_ban=True)
 
         # ブロックしているユーザ, ブロックされているユーザを表示しない
         rooms = rooms.exclude(
@@ -162,7 +166,17 @@ class RoomsAPIView(views.APIView):
         room_serializer = RoomSerializer(data=post_data)
         if room_serializer.is_valid():
             room_serializer.save()
-            room_data = room_serializer.data
+
+            tag_keys = request.data.get("tags", None)
+            if tag_keys is not None:
+                if type(tag_keys) != list:
+                    raise serializers.ValidationError("the tags not list.")
+                room = RoomV4.objects.get(id=room_serializer.data["id"])
+                tags = Tag.objects.filter(key__in=tag_keys)
+                room.tags.set(tags)
+                room_data = RoomSerializer(room).data
+            else:
+                room_data = room_serializer.data
 
             # プライベートルーム作成時通知
             if not request.user.is_ban and room_data["is_private"]:

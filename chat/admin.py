@@ -3,6 +3,15 @@ from .models import *
 from django.utils.html import format_html
 
 
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = (
+        "key",
+        "label",
+        "order",
+    )
+
+
 @admin.register(RoomV4)
 class RoomV4Admin(admin.ModelAdmin):
     list_display = (
@@ -13,6 +22,7 @@ class RoomV4Admin(admin.ModelAdmin):
         "format_participants",
         "format_left_members",
         "format_closed_members",
+        "is_speaker",
         "is_exclude_different_gender",
         "is_private",
         "created_at",

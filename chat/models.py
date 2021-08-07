@@ -5,6 +5,19 @@ from stdimage.models import StdImageField
 from random import choice
 
 
+class Tag(models.Model):
+    class Meta:
+        verbose_name = verbose_name_plural = "タグ"
+        ordering = ["order"]
+
+    def __str__(self):
+        return "{} - {}".format(self.key, self.label)
+
+    key = models.CharField(primary_key=True, verbose_name="キー", max_length=30)
+    label = models.CharField(verbose_name="ラベル", max_length=30, null=True)
+    order = models.FloatField(verbose_name="オーダー", default=0)
+
+
 class RoomV4(models.Model):
     class Meta:
         verbose_name = verbose_name_plural = "ルーム"
@@ -51,6 +64,13 @@ class RoomV4(models.Model):
     owner = models.ForeignKey(
         "account.Account", verbose_name="作成者", on_delete=models.CASCADE
     )
+    tags = models.ManyToManyField(
+        "chat.Tag",
+        verbose_name="タグ",
+        blank=True,
+        symmetrical=False,
+        related_name="room_tags",
+    )
     participants = models.ManyToManyField(
         "account.Account",
         verbose_name="参加者",
@@ -76,6 +96,7 @@ class RoomV4(models.Model):
     is_exclude_different_gender = models.BooleanField(
         verbose_name="異性を禁止", default=False
     )
+    is_speaker = models.BooleanField(verbose_name="話したい", default=True)
     is_private = models.BooleanField(verbose_name="プライベートルーム", default=False)
     created_at = models.DateTimeField(verbose_name="作成時間", default=timezone.now)
     is_end = models.BooleanField(verbose_name="終了状態", default=False)  # 1人でも退室したらTrue

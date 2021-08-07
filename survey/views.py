@@ -1,6 +1,9 @@
 from drf_yasg.utils import swagger_auto_schema
 from fullfii.lib.constants import api_class
-from survey.serializers import AccountDeleteSurveySerializer
+from survey.serializers import (
+    AccountDeleteSurveySerializer,
+    DissatisfactionSurveySerializer,
+)
 from rest_framework import views, permissions, status
 from rest_framework.response import Response
 
@@ -31,3 +34,31 @@ class SurveyAccountDeleteAPIView(views.APIView):
 
 
 survey_account_delete_api_view = SurveyAccountDeleteAPIView.as_view()
+
+
+class SurveyDissatisfactionAPIView(views.APIView):
+    @swagger_auto_schema(
+        operation_summary="不満レビューサーベイ登録",
+        operation_id="survey_dissatisfaction_POST",
+        tags=[api_class.API_CLS_SURVEY],
+    )
+    def post(self, request, *args, **kwargs):
+        """
+        post data: { contents: "使い方がイマイチわからない", }
+        """
+
+        post_data = {"respondent": request.user.id, **request.data}
+        dissatisfaction_survey_serializer = DissatisfactionSurveySerializer(
+            data=post_data
+        )
+        if dissatisfaction_survey_serializer.is_valid():
+            dissatisfaction_survey_serializer.save()
+            return Response(status=status.HTTP_201_CREATED)
+        else:
+            return Response(
+                data=dissatisfaction_survey_serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+survey_dissatisfaction_api_view = SurveyDissatisfactionAPIView.as_view()

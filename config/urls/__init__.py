@@ -10,6 +10,8 @@ urlpatterns = [
     # path('api/v3/', include('api.v3.urls')),
     path("api/v4/", include("api.v4.urls")),
     path("", include("main.urls")),
+    # HACK:
+    path("maintenance-mode/", include("maintenance_mode.urls")),
 ]
 
 if settings.ADMIN:
@@ -19,6 +21,7 @@ if settings.ADMIN:
     urlpatterns += [path("admin/", admin.site.urls)]
 
 
+# only Debugging
 if settings.DEBUG:
     urlpatterns += [
         path("", include(swagger_urls)),

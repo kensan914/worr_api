@@ -1,10 +1,20 @@
 import os
 from rest_framework import serializers
 from account.v4.serializers import UserSerializer
-from chat.models import MessageV4, RoomV4
+from chat.models import MessageV4, RoomV4, Tag
 from account.models import Account
 from fullfii.db.account import exists_std_images
 from fullfii.lib.constants import BASE_URL
+
+
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = (
+            "key",
+            "label",
+            "order",
+        )
 
 
 class RoomSerializer(serializers.ModelSerializer):
@@ -17,6 +27,8 @@ class RoomSerializer(serializers.ModelSerializer):
             "image_src",
             "owner",
             "owner_id",
+            "tags",
+            "is_speaker",
             "participants",
             "left_members",
             "max_num_participants",
@@ -37,6 +49,7 @@ class RoomSerializer(serializers.ModelSerializer):
     image_src = serializers.ImageField(
         source="image", write_only=True, required=False
     )  # post only
+    tags = TagSerializer(many=True, required=False, read_only=True)
     participants = UserSerializer(many=True, required=False)
     left_members = UserSerializer(many=True, required=False)
     created_at = serializers.SerializerMethodField()
@@ -92,11 +105,10 @@ class RoomSerializer(serializers.ModelSerializer):
             return []
 
     def create(self, validated_date):
+        # owner
         validated_date["owner"] = validated_date.get("owner_id", None)
-
         if validated_date["owner"] is None:
             raise serializers.ValidationError("the owner not found.")
-
         del validated_date["owner_id"]
 
         return RoomV4.objects.create(**validated_date)
