@@ -15,7 +15,8 @@ from account.v4.serializers import (
     UserSerializer,
 )
 from account.models import Gender, ProfileImage, Account, Job, FavoriteUserRelationship
-from chat.models import RoomV4
+from chat.models import RoomV4, Tag
+from chat.v4.serializers import TagSerializer
 from fullfii.lib.constants import api_class
 
 
@@ -94,6 +95,7 @@ class ProfileParamsAPIView(views.APIView):
         # profile params
         # genre_of_worries_obj = self.get_profile_params(
         #     GenreOfWorriesSerializer, GenreOfWorries)
+        tags_obj = self.get_profile_params(TagSerializer, Tag)
 
         # text choices
         gender_obj = self.get_text_choices(Gender)
@@ -104,6 +106,7 @@ class ProfileParamsAPIView(views.APIView):
                 # 'genre_of_worries': genre_of_worries_obj,
                 "gender": gender_obj,
                 "job": job_obj,
+                "tags": tags_obj,
             },
             status.HTTP_200_OK,
         )

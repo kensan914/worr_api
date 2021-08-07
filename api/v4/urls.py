@@ -21,7 +21,7 @@ from chat.v4.views import (
     rooms_detail_closed_members_api_view,
     private_rooms_api_view,
 )
-from survey.views import survey_account_delete_api_view
+from survey.views import survey_account_delete_api_view, survey_dissatisfaction_api_view
 
 app_name = "api_v4"
 
@@ -86,5 +86,10 @@ urlpatterns = [
         "survey/account-delete/",
         survey_account_delete_api_view,
         name="survey_account_delete_api",
+    ),
+    path(
+        "survey/dissatisfaction/",
+        survey_dissatisfaction_api_view,
+        name="survey_dissatisfaction_api",
     ),
 ]

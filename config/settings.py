@@ -39,6 +39,7 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 # Application definition
 
 INSTALLED_APPS = [
+    "admin_shortcuts",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -55,6 +56,7 @@ INSTALLED_APPS = [
     "channels",
     "stdimage",
     "drf_yasg",
+    "maintenance_mode",
 ]
 
 MIDDLEWARE = [
@@ -65,6 +67,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "maintenance_mode.middleware.MaintenanceModeMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -81,6 +84,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "django.template.context_processors.media",
+                "maintenance_mode.context_processors.maintenance_mode",
             ],
             "builtins": [
                 "bootstrap4.templatetags.bootstrap4",
@@ -203,3 +207,32 @@ SWAGGER_SETTINGS = {
     "DEFAULT_MODEL_RENDERING": "example",
     "TAGS_SORTER": "alpha",
 }
+
+# django-maintenance-mode
+MAINTENANCE_MODE = None
+MAINTENANCE_MODE_STATE_FILE_PATH = "config/maintenance_mode_state.txt"
+MAINTENANCE_MODE_IGNORE_URLS = (r"^/admin/",)
+# MAINTENANCE_MODE_IGNORE_SUPERUSER = True
+
+# django-admin-shortcuts
+ADMIN_SHORTCUTS = [
+    {
+        "shortcuts": [
+            {
+                "url_name": "admin:logout",
+                "icon": "sign-out-alt",
+            },
+            {
+                "url": "/maintenance-mode/on/",
+                "title": "メンテナンス開始",
+                "icon": "toggle-on",
+                "count_new": "fullfii.lib.helpers.gene_maintenance_message",
+            },
+            {
+                "url": "/maintenance-mode/off/",
+                "title": "メンテナンス終了",
+                "icon": "toggle-off",
+            },
+        ]
+    },
+]
