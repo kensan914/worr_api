@@ -1,8 +1,10 @@
 from asgiref.sync import async_to_sync
 from drf_yasg.utils import swagger_auto_schema
 from account.models_ex import AccountEx
+from account.v4.serializers import MeSerializer
 from fullfii.lib.constants import api_class
 from fullfii.lib.firebase import send_fcm
+from fullfii.lib.helpers import convert_querystring_to_list
 from main.v4.consumers import NotificationConsumer
 from account.models import Account, Gender
 from django.db.models import Q
@@ -63,6 +65,10 @@ class RoomsAPIView(views.APIView):
         """
         _page = self.request.GET.get("page")
         page = int(_page) if _page is not None and _page.isdecimal() else 1
+        tags_str = self.request.GET.get("tags", "")  # ex) 'love,love2,   love3'
+        tag_list = convert_querystring_to_list(
+            tags_str
+        )  # ex) ["love", "love2", "love3"]
 
         rooms = RoomV4.objects.filter(
             is_active=True,
@@ -74,6 +80,10 @@ class RoomsAPIView(views.APIView):
             | Q(id__in=request.user.hidden_rooms.all())
             | Q(id__in=request.user.blocked_rooms.all())
         )
+
+        if len(tag_list) > 0 and tag_list is not None:
+            # 重複取得の可能性があるため, distinct()
+            rooms = rooms.filter(tags__in=tag_list).distinct()
 
         # my gender == 設定済み
         if request.user.gender != Gender.NOTSET and not request.user.is_secret_gender:
@@ -374,15 +384,18 @@ class RoomsDetailParticipantsAPIView(views.APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        # 既に参加ルームが存在した場合、中断
-        if RoomV4.objects.filter(participants=request.user, is_end=False).exists():
+        # 参加ルーム数が制限を超過していた場合、中断
+        if (
+            RoomV4.objects.filter(participants=request.user, is_end=False).count()
+            >= request.user.limit_participate
+        ):
             return Response(
                 data={
                     "error": {
                         "alert": True,
                         "type": "conflict room participant post",
                         "title": "既に参加しているルームを退室してください",
-                        "message": "ルームにはひとつまでしか参加できません。",
+                        "message": "参加できるルーム数が上限を超えました。",
                     }
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -553,8 +566,15 @@ class RoomsDetailClosedMembersAPIView(views.APIView):
 
         account = get_object_or_404(Account, id=account_id)
         AccountEx.increment_num_of_talk(account, room)
+        result, me = AccountEx.give_exp(account, room)
 
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(
+            {
+                "result_level_up": result["result_level_up"],
+                "me": MeSerializer(me).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 rooms_detail_closed_members_api_view = RoomsDetailClosedMembersAPIView.as_view()

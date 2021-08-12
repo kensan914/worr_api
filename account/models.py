@@ -96,6 +96,7 @@ class Gender(models.TextChoices):
 
 
 class Job(models.TextChoices):
+    JHS_STUDENT = "jhs-student", "中学生"
     HS_STUDENT = "hs-student", "高校生"
     COLLEGE_STUDENT = "college-student", "大学生"
     HOUSEWIFE = "housewife", "主婦／主夫"
@@ -143,6 +144,10 @@ class Account(AbstractBaseUser):
     is_ban = models.BooleanField(
         verbose_name="凍結状態 (凍結/凍結解除する際はここをTrue/Falseに)", default=False
     )
+
+    level = models.IntegerField(verbose_name="レベル", default=1)
+    exp = models.IntegerField(verbose_name="経験値", default=0)
+    limit_participate = models.IntegerField(verbose_name="参加ルーム数制限", default=1)
 
     hidden_rooms = models.ManyToManyField(
         "chat.RoomV4",

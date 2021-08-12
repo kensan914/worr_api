@@ -4,6 +4,7 @@ from rest_framework import serializers
 from account.models import Account, ProfileImage, Gender, Job
 from fullfii.lib.constants import BASE_URL, USER_EMPTY_ICON_PATH
 from fullfii.db.account import exists_std_images
+from fullfii.lib.exp_calculator import get_current_level_info
 
 
 class AuthSerializer(serializers.ModelSerializer):
@@ -136,9 +137,25 @@ class MeSerializer(UserSerializer):
             "num_of_owner",
             "num_of_participated",
             "is_private_profile",
+            "level_info",
+            "limit_participate",
         )
 
     me = serializers.BooleanField(default=True, read_only=True)
+    level_info = serializers.SerializerMethodField()
+
+    def get_level_info(self, obj):
+        (
+            current_level,
+            required_exp_next_level,
+            exp_in_current_level,
+        ) = get_current_level_info(obj.exp)
+        return {
+            "current_level": current_level,
+            "required_exp_next_level": required_exp_next_level,
+            "exp_in_current_level": exp_in_current_level,
+            "total_exp": obj.exp,
+        }
 
 
 class PatchMeSerializer(serializers.ModelSerializer):

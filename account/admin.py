@@ -10,9 +10,11 @@ class AccountAdmin(admin.ModelAdmin):
         "username",
         "format_gender",
         "job",
-        "introduction",
         "is_active",
         "format_is_ban",
+        "num_of_owner",
+        "num_of_participated",
+        "level",
         "loggedin_at",
         "date_joined",
     )
@@ -25,6 +27,7 @@ class AccountAdmin(admin.ModelAdmin):
         "blocked_rooms",
         "blocked_accounts",
         "favorite_users",
+        "talked_accounts",
     )
     filter_horizontal = (
         "genre_of_worries",
