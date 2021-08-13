@@ -248,7 +248,17 @@ class HiddenRoomsAPIView(views.APIView):
 
         # 自身がオーナーのルームは非表示できない
         if str(request.user.id) == str(room.owner.id):
-            return Response(status=status.HTTP_409_CONFLICT)
+            return Response(
+                data={
+                    "error": {
+                        "alert": True,
+                        "type": "conflict room participant post",
+                        "title": "自身が作成したルームは非表示にできません",
+                        "message": "",
+                    }
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
         request.user.hidden_rooms.add(room.id)
         request.user.save()
@@ -288,7 +298,18 @@ class BlockedRoomsAPIView(views.APIView):
 
         # 自身がオーナーのルームはブロックできない
         if str(request.user.id) == str(room.owner.id):
-            return Response(status=status.HTTP_409_CONFLICT)
+            if str(request.user.id) == str(room.owner.id):
+                return Response(
+                    data={
+                        "error": {
+                            "alert": True,
+                            "type": "conflict room participant post",
+                            "title": "自身が作成したルームはブロックできません",
+                            "message": "",
+                        }
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
 
         request.user.blocked_rooms.add(room.id)
         request.user.save()
