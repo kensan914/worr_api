@@ -1,8 +1,10 @@
 from asgiref.sync import async_to_sync
 from drf_yasg.utils import swagger_auto_schema
 from account.models_ex import AccountEx
+from account.v4.serializers import MeSerializer
 from fullfii.lib.constants import api_class
 from fullfii.lib.firebase import send_fcm
+from fullfii.lib.helpers import convert_querystring_to_list
 from main.v4.consumers import NotificationConsumer
 from account.models import Account, Gender
 from django.db.models import Q
@@ -63,17 +65,25 @@ class RoomsAPIView(views.APIView):
         """
         _page = self.request.GET.get("page")
         page = int(_page) if _page is not None and _page.isdecimal() else 1
+        tags_str = self.request.GET.get("tags", "")  # ex) 'love,love2,   love3'
+        tag_list = convert_querystring_to_list(
+            tags_str
+        )  # ex) ["love", "love2", "love3"]
 
         rooms = RoomV4.objects.filter(
             is_active=True,
             is_end=False,
             owner__is_active=True,
         ).exclude(
-            Q(owner=request.user)
-            | Q(participants=request.user)
+            # Q(owner=request.user)
+            Q(participants=request.user)
             | Q(id__in=request.user.hidden_rooms.all())
             | Q(id__in=request.user.blocked_rooms.all())
         )
+
+        if len(tag_list) > 0 and tag_list is not None:
+            # 重複取得の可能性があるため, distinct()
+            rooms = rooms.filter(tags__in=tag_list).distinct()
 
         # my gender == 設定済み
         if request.user.gender != Gender.NOTSET and not request.user.is_secret_gender:
@@ -111,10 +121,6 @@ class RoomsAPIView(views.APIView):
             )
 
         # 凍結ユーザは表示されない (過去女性のみに非表示だったが、男性等にも非表示にしたくなったため)
-        # if (
-        #     request.user.gender == Gender.FEMALE
-        #     and request.user.is_secret_gender == False
-        # ):
         rooms = rooms.exclude(owner__is_ban=True)
 
         # ブロックしているユーザ, ブロックされているユーザを表示しない
@@ -244,7 +250,19 @@ class RoomsDetailAPIView(views.APIView):
         room_serializer = RoomSerializer(instance=room, data=request.data, partial=True)
         if room_serializer.is_valid():
             room_serializer.save()
-            return Response(data=room_serializer.data, status=status.HTTP_200_OK)
+
+            tag_keys = request.data.get("tags", None)
+            if tag_keys is not None:
+                if type(tag_keys) != list:
+                    raise serializers.ValidationError("the tags not list.")
+                room = RoomV4.objects.get(id=room_serializer.data["id"])
+                tags = Tag.objects.filter(key__in=tag_keys)
+                room.tags.set(tags)
+                room_data = RoomSerializer(room).data
+            else:
+                room_data = room_serializer.data
+
+            return Response(data=room_data, status=status.HTTP_200_OK)
         else:
             return Response(
                 data=room_serializer.errors, status=status.HTTP_409_CONFLICT
@@ -374,15 +392,32 @@ class RoomsDetailParticipantsAPIView(views.APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        # 既に参加ルームが存在した場合、中断
-        if RoomV4.objects.filter(participants=request.user, is_end=False).exists():
+        # 自身で作成したルームに参加した場合, 中断
+        if room.owner.id == request.user.id:
+            return Response(
+                data={
+                    "error": {
+                        "alert": True,
+                        "type": "conflict room participant post",
+                        "title": "自身が作成したルームには参加できません",
+                        "message": "",
+                    }
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # 参加ルーム数が制限を超過していた場合、中断
+        if (
+            RoomV4.objects.filter(participants=request.user, is_end=False).count()
+            >= request.user.limit_participate
+        ):
             return Response(
                 data={
                     "error": {
                         "alert": True,
                         "type": "conflict room participant post",
                         "title": "既に参加しているルームを退室してください",
-                        "message": "ルームにはひとつまでしか参加できません。",
+                        "message": "参加できるルーム数が上限を超えました。",
                     }
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -553,8 +588,15 @@ class RoomsDetailClosedMembersAPIView(views.APIView):
 
         account = get_object_or_404(Account, id=account_id)
         AccountEx.increment_num_of_talk(account, room)
+        result, me = AccountEx.give_exp(account, room)
 
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(
+            {
+                "result_level_up": result["result_level_up"],
+                "me": MeSerializer(me).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 rooms_detail_closed_members_api_view = RoomsDetailClosedMembersAPIView.as_view()
