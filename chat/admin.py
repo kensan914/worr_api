@@ -42,9 +42,11 @@ class RoomV4Admin(admin.ModelAdmin):
     raw_id_fields = ("owner", "participants", "left_members", "closed_members")
 
     def format_to_admin_messages(self, obj):
+        messages = MessageV4.objects.filter(room=obj)
         return format_html(
-            '<a href={} target="_blank">メッセージ一覧へ</a>',
+            '<a href={} target="_blank">メッセージ一覧（{}）</a>',
             gene_messages_admin_url(obj.id),
+            messages.count(),
         )
 
     format_to_admin_messages.short_description = "メッセージ一覧リンク"
