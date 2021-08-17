@@ -1,4 +1,6 @@
 from django.contrib import admin
+
+from fullfii.lib.constants import gene_messages_admin_url
 from .models import *
 from django.utils.html import format_html
 
@@ -16,6 +18,7 @@ class TagAdmin(admin.ModelAdmin):
 class RoomV4Admin(admin.ModelAdmin):
     list_display = (
         "name",
+        "format_to_admin_messages",
         "format_image",
         "format_default_image",
         "owner",
@@ -37,6 +40,14 @@ class RoomV4Admin(admin.ModelAdmin):
         "is_active",
     )
     raw_id_fields = ("owner", "participants", "left_members", "closed_members")
+
+    def format_to_admin_messages(self, obj):
+        return format_html(
+            '<a href={} target="_blank">メッセージ一覧へ</a>',
+            gene_messages_admin_url(obj.id),
+        )
+
+    format_to_admin_messages.short_description = "メッセージ一覧リンク"
 
     def format_participants(self, obj):
         participants_usernames = [

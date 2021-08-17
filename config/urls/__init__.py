@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from config import settings
 from config.urls import swagger_urls
-
+from main.views import admin_messages_view
 
 urlpatterns = [
     # path("api/v1/", include("api.urls")),
@@ -18,7 +18,14 @@ if settings.ADMIN:
     admin.site.site_header = "Fullfii 管理サイト"
     admin.site.site_title = "Fullfii 管理サイト"
     admin.site.index_title = "HOME🏠"
-    urlpatterns += [path("admin/", admin.site.urls)]
+    urlpatterns += [
+        path(
+            "admin/rooms/<uuid:room_id>/messages/",
+            admin_messages_view,
+            name="admin_messages_view",
+        ),
+        path("admin/", admin.site.urls),
+    ]
 
 
 # only Debugging
