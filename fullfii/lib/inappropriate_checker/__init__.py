@@ -45,7 +45,7 @@ class InappropriateChecker:
             _room=room,
         )
 
-    def check(self, message_text, shouldSendSlack=False):
+    def check(self, message_text, message_id=None, shouldSendSlack=False):
         optimized_message = optimize_text(message_text)
 
         # タブー
@@ -56,6 +56,7 @@ class InappropriateChecker:
                 self.inappropriate_alert_slack_sender.send_inappropriate_alert(
                     inappropriate_type=InappropriateType.TABOO,
                     message_text=message_text,
+                    message_id=message_id,
                     inappropriate_word_text=result_taboo,
                 )
             return InappropriateType.TABOO
@@ -68,6 +69,7 @@ class InappropriateChecker:
                 self.inappropriate_alert_slack_sender.send_inappropriate_alert(
                     inappropriate_type=InappropriateType.WARNING,
                     message_text=message_text,
+                    message_id=message_id,
                     inappropriate_word_text=result_warning,
                 )
             return InappropriateType.WARNING

@@ -8,6 +8,7 @@ from fullfii.lib.constants import (
     gene_account_admin_url,
     gene_room_admin_url,
     CONFLUENCE_URL_GUIDE_BAN,
+    gene_messages_admin_url,
 )
 from fullfii.lib.inappropriate_checker import InappropriateType
 
@@ -49,6 +50,7 @@ class InappropriateAlertSlackSender(SlackSender):
         self.room = _room
         self.inappropriate_type = InappropriateType.TABOO
         self.message_text = ""
+        self.message_id = None
         self.inappropriate_word_text = ""
         super().__init__()
 
@@ -109,8 +111,8 @@ class InappropriateAlertSlackSender(SlackSender):
                             "value": f"{self.inappropriate_word_text}",
                         },
                         {
-                            "title": "【ルーム】",
-                            "value": f"<{gene_room_admin_url(self.room.id)}|{self.room}>",
+                            "title": "【メッセージ一覧】",
+                            "value": f"<{gene_messages_admin_url(self.room.id, self.message_id)}|{self.room}>",
                         },
                         guide_attachment_field[self.inappropriate_type],
                     ],
@@ -144,6 +146,7 @@ class InappropriateAlertSlackSender(SlackSender):
         self,
         inappropriate_type,
         message_text,
+        message_id,
         inappropriate_word_text,
     ):
         if (
@@ -160,6 +163,7 @@ class InappropriateAlertSlackSender(SlackSender):
 
         self.inappropriate_type = inappropriate_type
         self.message_text = message_text
+        self.message_id = message_id
         self.inappropriate_word_text = inappropriate_word_text
         self.update_settings()
 

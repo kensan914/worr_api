@@ -110,7 +110,7 @@ class ChatConsumer(JWTAsyncWebsocketConsumer):
 
                 # 不適切チェック
                 if self.inappropriate_checker is not None:
-                    result = await self.check_inappropriate_word(text)
+                    result = await self.check_inappropriate_word(text, message_id)
                     # タブーだった場合, 凍結処理
                     if result == InappropriateType.TABOO:
                         await self.send(
@@ -234,8 +234,8 @@ class ChatConsumer(JWTAsyncWebsocketConsumer):
         )
 
     @database_sync_to_async
-    def check_inappropriate_word(self, text):
-        return self.inappropriate_checker.check(text, shouldSendSlack=True)
+    def check_inappropriate_word(self, text, message_id):
+        return self.inappropriate_checker.check(text, message_id, shouldSendSlack=True)
 
     @database_sync_to_async
     def get_room_data(self, room, me):

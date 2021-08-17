@@ -19,6 +19,12 @@ def gene_room_admin_url(room_id):
     return os.path.join(BASE_URL, f"admin/chat/roomv4/{str(room_id)}/change/")
 
 
+def gene_messages_admin_url(room_id, message_id=None):
+    return os.path.join(BASE_URL, f"admin/rooms/{str(room_id)}/messages/") + (
+        f"#{message_id}" if message_id is not None else ""
+    )
+
+
 ### confluence ###
 CONFLUENCE_URL_GUIDE_BAN = (
     "https://fullfii.atlassian.net/wiki/spaces/FULLFII/pages/238747656"
