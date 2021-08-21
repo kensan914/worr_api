@@ -69,6 +69,11 @@ class RoomsAPIView(views.APIView):
         tag_list = convert_querystring_to_list(
             tags_str
         )  # ex) ["love", "love2", "love3"]
+        filter_key = self.request.GET.get(
+            "filter", "all"
+        )  # "all"(default) | "speak" | "listen"
+        if filter_key != "all" and filter_key != "speak" and filter_key != "listen":
+            filter_key = "all"
 
         rooms = RoomV4.objects.filter(
             is_active=True,
@@ -80,6 +85,11 @@ class RoomsAPIView(views.APIView):
             | Q(id__in=request.user.hidden_rooms.all())
             | Q(id__in=request.user.blocked_rooms.all())
         )
+
+        if filter_key == "speak":
+            rooms = rooms.filter(is_speaker=True)
+        elif filter_key == "listen":
+            rooms = rooms.filter(is_speaker=False)
 
         if len(tag_list) > 0 and tag_list is not None:
             # 重複取得の可能性があるため, distinct()
