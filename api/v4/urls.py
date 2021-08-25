@@ -20,6 +20,7 @@ from chat.v4.views import (
     rooms_detail_left_members_api_view,
     rooms_detail_closed_members_api_view,
     private_rooms_api_view,
+    rooms_summaries_api_view,
 )
 from survey.views import survey_account_delete_api_view, survey_dissatisfaction_api_view
 
@@ -79,6 +80,7 @@ urlpatterns = [
         name="rooms_detail_closed_members_api",
     ),
     path("private-rooms/", private_rooms_api_view, name="private_rooms_api"),
+    path("rooms/summaries/", rooms_summaries_api_view, name="rooms_summaries_api"),
     #######################
     ## 5. サーベイ/survey ##
     #######################
