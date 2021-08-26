@@ -137,8 +137,8 @@ class Account(AbstractBaseUser):
     device_token = models.CharField(
         verbose_name="デバイストークン", max_length=200, null=True, blank=True
     )
-    num_of_owner = models.IntegerField(verbose_name="オーナーとしての会話回数", default=0)
-    num_of_participated = models.IntegerField(verbose_name="参加者としての会話回数", default=0)
+    num_of_owner = models.IntegerField(verbose_name="話し手としての会話回数", default=0)
+    num_of_participated = models.IntegerField(verbose_name="聞き手としての会話回数", default=0)
     is_private_profile = models.BooleanField(verbose_name="プロフィール非公開", default=True)
     is_active = models.BooleanField(verbose_name="アクティブ状態", default=True)
     is_ban = models.BooleanField(

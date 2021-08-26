@@ -121,15 +121,19 @@ class RoomsAPIView(views.APIView):
     def filter_rooms_for_list(
         cls,
         rooms,
-        filter_key,
+        filter_keys,
         me,
     ):
-        if filter_key == "speak":
-            rooms = rooms.filter(is_speaker=True)
-        elif filter_key == "listen":
-            rooms = rooms.filter(is_speaker=False)
-        elif filter_key == "recommend":
-            rooms = rooms.filter(owner__job=me.job)
+        for filter_key in filter_keys:
+            if not filter_key in ["all", "speak", "listen", "recommend"]:
+                filter_key = "all"
+
+            if filter_key == "speak":
+                rooms = rooms.filter(is_speaker=True)
+            elif filter_key == "listen":
+                rooms = rooms.filter(is_speaker=False)
+            elif filter_key == "recommend":
+                rooms = rooms.filter(participants=None, owner__job=me.job)
         return rooms
 
     @classmethod
@@ -158,15 +162,15 @@ class RoomsAPIView(views.APIView):
         tag_list = convert_querystring_to_list(
             tags_str
         )  # ex) ["love", "love2", "love3"]
-        filter_key = self.request.GET.get(
+        filter_str = self.request.GET.get(
             "filter", "all"
         )  # "all"(default) | "speak" | "listen" | "recommend"
-        if not filter_key in ["all", "speak", "listen", "recommend"]:
-            # if filter_key != "all" and filter_key != "speak" and filter_key != "listen":
-            filter_key = "all"
+        filter_keys = convert_querystring_to_list(
+            filter_str
+        )  # ex) ["speak", "recommend"]
 
         rooms = self.fetch_rooms_for_list(request.user)
-        rooms = self.filter_rooms_for_list(rooms, filter_key, request.user)
+        rooms = self.filter_rooms_for_list(rooms, filter_keys, request.user)
         rooms = self.filter_rooms_by_tags(rooms, tag_list)
 
         # to create id_list will be faster
@@ -709,7 +713,7 @@ private_rooms_api_view = PrivateRoomsAPIView.as_view()
 
 
 class RoomsSummariesAPIView(views.APIView):
-    paginate_by = 5
+    paginate_by = 6
 
     @swagger_auto_schema(
         operation_summary="ルーム概要",
