@@ -10,14 +10,29 @@ class AccountEx(Account):
     def increment_num_of_talk(cls, me, room):
         """
         トーク完了後に実行.
-        オーナーであればnum_of_ownerを, 参加者であればnum_of_participatedをインクリメント.
+        # オーナーであればnum_of_ownerを, 参加者であればnum_of_participatedをインクリメント.
+        話し手であればnum_of_ownerを, 聞き手であればnum_of_participatedをインクリメント.
         """
+        # オーナー
         if me.id == room.owner.id:
-            me.num_of_owner += 1
+            if room.is_speaker:
+                # 話し手
+                me.num_of_owner += 1
+            else:
+                # 聞き手
+                me.num_of_participated += 1
+            # me.num_of_owner += 1
             me.save()
             return
+        # 参加者
         elif me.id in room.participants.all().values_list("id", flat=True):
-            me.num_of_participated += 1
+            if room.is_speaker:
+                # 聞き手
+                me.num_of_participated += 1
+            else:
+                # 話し手
+                me.num_of_owner += 1
+            # me.num_of_participated += 1
             me.save()
             return
 

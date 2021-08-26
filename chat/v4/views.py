@@ -13,7 +13,7 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
 from chat.models import RoomV4, Tag
-from chat.v4.serializers import RoomSerializer
+from chat.v4.serializers import RoomSerializer, TagSerializer
 from chat.v4.consumers import ChatConsumer
 from fullfii.db.chat import get_created_rooms, get_participating_rooms
 from rest_framework import serializers
@@ -54,6 +54,99 @@ talk_info_api_view = TalkInfoAPIView.as_view()
 class RoomsAPIView(views.APIView):
     paginate_by = 10
 
+    @classmethod
+    def fetch_rooms_for_list(
+        cls,
+        me,
+    ):
+        rooms = RoomV4.objects.filter(
+            is_active=True,
+            is_end=False,
+            owner__is_active=True,
+        ).exclude(
+            Q(participants=me)
+            | Q(id__in=me.hidden_rooms.all())
+            | Q(id__in=me.blocked_rooms.all())
+        )
+
+        # my gender == 設定済み
+        if me.gender != Gender.NOTSET and not me.is_secret_gender:
+            # 異性非表示設定 & オーナー性別設定済 & オーナーと性別が異なる : 除外 (相手が異性非表示設定を設定していた場合, 同性別時のみ表示)
+            rooms = rooms.filter(
+                Q(is_exclude_different_gender=False)
+                | Q(owner__is_secret_gender=True)
+                | Q(owner__gender=Gender.NOTSET)
+                | Q(owner__gender=me.gender)
+            )
+        # my gender == 未設定 or 秘密
+        else:
+            # 異性非表示設定 & オーナー性別設定済 : 除外 (相手が異性非表示設定を設定していた場合, 無条件で非表示)
+            rooms = rooms.filter(
+                Q(is_exclude_different_gender=False)
+                | Q(owner__is_secret_gender=True)
+                | Q(owner__gender=Gender.NOTSET)
+            )
+
+        # 自分と話しているユーザは非表示
+        talking_member_ids = []
+        created_rooms = get_created_rooms(me)
+        for created_room in created_rooms:
+            talking_member_ids += created_room.participants.values_list("id", flat=True)
+        participating_rooms = get_participating_rooms(me)
+        talking_member_ids += [
+            participating_room.owner.id for participating_room in participating_rooms
+        ]
+        rooms = rooms.exclude(owner__in=talking_member_ids)
+
+        # 凍結されていたら, 女性は表示しない
+        if me.is_ban:
+            rooms = rooms.exclude(
+                owner__gender=Gender.FEMALE, owner__is_secret_gender=False
+            )
+
+        # 凍結ユーザは表示されない (過去女性のみに非表示だったが、男性等にも非表示にしたくなったため)
+        rooms = rooms.exclude(owner__is_ban=True)
+
+        # ブロックしているユーザ, ブロックされているユーザを表示しない
+        rooms = rooms.exclude(
+            Q(owner__in=me.blocked_accounts.all())
+            | Q(owner__in=me.block_me_accounts.all())
+        )
+
+        # プライベートルームはroomsに含めない
+        rooms = rooms.exclude(is_private=True)
+        return rooms
+
+    @classmethod
+    def filter_rooms_for_list(
+        cls,
+        rooms,
+        filter_keys,
+        me,
+    ):
+        for filter_key in filter_keys:
+            if not filter_key in ["all", "speak", "listen", "recommend"]:
+                filter_key = "all"
+
+            if filter_key == "speak":
+                rooms = rooms.filter(is_speaker=True)
+            elif filter_key == "listen":
+                rooms = rooms.filter(is_speaker=False)
+            elif filter_key == "recommend":
+                rooms = rooms.filter(participants=None, owner__job=me.job)
+        return rooms
+
+    @classmethod
+    def filter_rooms_by_tags(
+        cls,
+        rooms,
+        tag_list,
+    ):
+        if len(tag_list) > 0 and tag_list is not None:
+            # 重複取得の可能性があるため, distinct()
+            rooms = rooms.filter(tags__in=tag_list).distinct()
+        return rooms
+
     @swagger_auto_schema(
         operation_summary="ルームの取得",
         operation_id="rooms_GET",
@@ -69,78 +162,16 @@ class RoomsAPIView(views.APIView):
         tag_list = convert_querystring_to_list(
             tags_str
         )  # ex) ["love", "love2", "love3"]
-        filter_key = self.request.GET.get(
+        filter_str = self.request.GET.get(
             "filter", "all"
-        )  # "all"(default) | "speak" | "listen"
-        if filter_key != "all" and filter_key != "speak" and filter_key != "listen":
-            filter_key = "all"
+        )  # "all"(default) | "speak" | "listen" | "recommend"
+        filter_keys = convert_querystring_to_list(
+            filter_str
+        )  # ex) ["speak", "recommend"]
 
-        rooms = RoomV4.objects.filter(
-            is_active=True,
-            is_end=False,
-            owner__is_active=True,
-        ).exclude(
-            # Q(owner=request.user)
-            Q(participants=request.user)
-            | Q(id__in=request.user.hidden_rooms.all())
-            | Q(id__in=request.user.blocked_rooms.all())
-        )
-
-        if filter_key == "speak":
-            rooms = rooms.filter(is_speaker=True)
-        elif filter_key == "listen":
-            rooms = rooms.filter(is_speaker=False)
-
-        if len(tag_list) > 0 and tag_list is not None:
-            # 重複取得の可能性があるため, distinct()
-            rooms = rooms.filter(tags__in=tag_list).distinct()
-
-        # my gender == 設定済み
-        if request.user.gender != Gender.NOTSET and not request.user.is_secret_gender:
-            # 異性非表示設定 & オーナー性別設定済 & オーナーと性別が異なる : 除外 (相手が異性非表示設定を設定していた場合, 同性別時のみ表示)
-            rooms = rooms.filter(
-                Q(is_exclude_different_gender=False)
-                | Q(owner__is_secret_gender=True)
-                | Q(owner__gender=Gender.NOTSET)
-                | Q(owner__gender=request.user.gender)
-            )
-        # my gender == 未設定 or 秘密
-        else:
-            # 異性非表示設定 & オーナー性別設定済 : 除外 (相手が異性非表示設定を設定していた場合, 無条件で非表示)
-            rooms = rooms.filter(
-                Q(is_exclude_different_gender=False)
-                | Q(owner__is_secret_gender=True)
-                | Q(owner__gender=Gender.NOTSET)
-            )
-
-        # 自分と話しているユーザは非表示
-        talking_member_ids = []
-        created_rooms = get_created_rooms(request.user)
-        for created_room in created_rooms:
-            talking_member_ids += created_room.participants.values_list("id", flat=True)
-        participating_rooms = get_participating_rooms(request.user)
-        talking_member_ids += [
-            participating_room.owner.id for participating_room in participating_rooms
-        ]
-        rooms = rooms.exclude(owner__in=talking_member_ids)
-
-        # 凍結されていたら, 女性は表示しない
-        if request.user.is_ban:
-            rooms = rooms.exclude(
-                owner__gender=Gender.FEMALE, owner__is_secret_gender=False
-            )
-
-        # 凍結ユーザは表示されない (過去女性のみに非表示だったが、男性等にも非表示にしたくなったため)
-        rooms = rooms.exclude(owner__is_ban=True)
-
-        # ブロックしているユーザ, ブロックされているユーザを表示しない
-        rooms = rooms.exclude(
-            Q(owner__in=request.user.blocked_accounts.all())
-            | Q(owner__in=request.user.block_me_accounts.all())
-        )
-
-        # プライベートルームはroomsに含めない
-        rooms = rooms.exclude(is_private=True)
+        rooms = self.fetch_rooms_for_list(request.user)
+        rooms = self.filter_rooms_for_list(rooms, filter_keys, request.user)
+        rooms = self.filter_rooms_by_tags(rooms, tag_list)
 
         # to create id_list will be faster
         id_list = list(
@@ -615,18 +646,14 @@ rooms_detail_closed_members_api_view = RoomsDetailClosedMembersAPIView.as_view()
 class PrivateRoomsAPIView(views.APIView):
     paginate_by = 10
 
-    @swagger_auto_schema(
-        operation_summary="プライベートルームの取得",
-        operation_id="private_rooms_GET",
-        tags=[api_class.API_CLS_ROOM],
-    )
-    def get(self, request, *args, **kwargs):
-        _page = self.request.GET.get("page")
-        page = int(_page) if _page is not None and _page.isdecimal() else 1
-
+    @classmethod
+    def fetch_private_rooms_for_list(
+        cls,
+        me,
+    ):
         # 自分と話したいと思ってくれているユーザ
         private_user_ids = (
-            request.user.favorite_account_favorite_user_relationship.all().values_list(
+            me.favorite_account_favorite_user_relationship.all().values_list(
                 "owner", flat=True
             )
         )
@@ -637,10 +664,10 @@ class PrivateRoomsAPIView(views.APIView):
             is_end=False,
             owner__is_active=True,
         ).exclude(
-            Q(owner=request.user)
-            | Q(participants=request.user)
-            | Q(id__in=request.user.hidden_rooms.all())
-            | Q(id__in=request.user.blocked_rooms.all())
+            Q(owner=me)
+            | Q(participants=me)
+            | Q(id__in=me.hidden_rooms.all())
+            | Q(id__in=me.blocked_rooms.all())
         )
 
         # 凍結されているユーザは表示しない
@@ -648,9 +675,21 @@ class PrivateRoomsAPIView(views.APIView):
 
         # ブロックしているユーザ, ブロックされているユーザを表示しない
         private_rooms = private_rooms.exclude(
-            Q(owner__in=request.user.blocked_accounts.all())
-            | Q(owner__in=request.user.block_me_accounts.all())
+            Q(owner__in=me.blocked_accounts.all())
+            | Q(owner__in=me.block_me_accounts.all())
         )
+        return private_rooms
+
+    @swagger_auto_schema(
+        operation_summary="プライベートルームの取得",
+        operation_id="private_rooms_GET",
+        tags=[api_class.API_CLS_ROOM],
+    )
+    def get(self, request, *args, **kwargs):
+        _page = self.request.GET.get("page")
+        page = int(_page) if _page is not None and _page.isdecimal() else 1
+
+        private_rooms = self.fetch_private_rooms_for_list(request.user)
 
         # to create id_list will be faster
         id_list = list(
@@ -671,3 +710,47 @@ class PrivateRoomsAPIView(views.APIView):
 
 
 private_rooms_api_view = PrivateRoomsAPIView.as_view()
+
+
+class RoomsSummariesAPIView(views.APIView):
+    paginate_by = 6
+
+    @swagger_auto_schema(
+        operation_summary="ルーム概要",
+        operation_id="rooms_summaries_GET",
+        tags=[api_class.API_CLS_ROOM],
+    )
+    def get(self, request, *args, **kwargs):
+        per_page_str = self.request.GET.get("per_page", str(self.paginate_by))
+        per_page = int(per_page_str) if per_page_str.isdecimal() else self.paginate_by
+
+        rooms = RoomsAPIView.fetch_rooms_for_list(request.user)
+
+        summaries = []
+
+        for tag in Tag.objects.all():
+            rooms_filtered_by_tags = RoomsAPIView.filter_rooms_by_tags(rooms, [tag.key])
+            id_list = list(
+                rooms_filtered_by_tags[0:per_page].values_list("id", flat=True)
+            )
+            rooms_filtered_by_tags = [
+                rooms_filtered_by_tags.get(id=pk) for pk in id_list
+            ]
+
+            summaries.append(
+                {
+                    "tag": TagSerializer(tag).data,
+                    "title": tag.label,
+                    "rooms": RoomSerializer(rooms_filtered_by_tags, many=True).data,
+                }
+            )
+
+        return Response(
+            {
+                "summaries": summaries,
+            },
+            status.HTTP_200_OK,
+        )
+
+
+rooms_summaries_api_view = RoomsSummariesAPIView.as_view()
