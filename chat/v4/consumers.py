@@ -6,8 +6,10 @@ from channels.db import database_sync_to_async
 import json
 from channels.layers import get_channel_layer
 from django.utils import timezone
-
-from fullfii.lib.inappropriate_checker import InappropriateChecker, InappropriateType
+from fullfii.lib.inappropriate_checker import (
+    InappropriateMessageChecker,
+    InappropriateType,
+)
 from main.v4.consumers import JWTAsyncWebsocketConsumer
 from chat.models import RoomV4, MessageV4
 from chat.v4.serializers import MessageSerializer, RoomSerializer
@@ -227,7 +229,7 @@ class ChatConsumer(JWTAsyncWebsocketConsumer):
 
     @database_sync_to_async
     def create_inappropriate_checker(self, me, room):
-        return InappropriateChecker.create(
+        return InappropriateMessageChecker.create(
             self.inappropriate_words_csv_path,
             sender=me,
             room=room,
