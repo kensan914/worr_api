@@ -5,6 +5,11 @@ from account.v4.serializers import MeSerializer
 from fullfii.lib.constants import api_class
 from fullfii.lib.firebase import send_fcm
 from fullfii.lib.helpers import convert_querystring_to_list
+from fullfii.lib.inappropriate_checker import (
+    InappropriateMessageChecker,
+    InappropriateRoomNameChecker,
+    InappropriateType,
+)
 from main.v4.consumers import NotificationConsumer
 from account.models import Account, Gender
 from django.db.models import Q
@@ -187,6 +192,10 @@ class RoomsAPIView(views.APIView):
             status.HTTP_200_OK,
         )
 
+    inappropriate_words_csv_path = (
+        "fullfii/lib/inappropriate_checker/inappropriate_words.csv"
+    )
+
     @swagger_auto_schema(
         operation_summary="ルームの登録",
         operation_id="rooms_POST",
@@ -212,6 +221,29 @@ class RoomsAPIView(views.APIView):
         post_data = {"owner_id": request.user.id, **request.data}
         room_serializer = RoomSerializer(data=post_data)
         if room_serializer.is_valid():
+            inappropriate_checker = InappropriateRoomNameChecker.create(
+                self.inappropriate_words_csv_path,
+                sender=request.user,
+            )
+            result = inappropriate_checker.check(
+                request.data["name"], shouldSendSlack=True
+            )
+            # タブーだった場合, 凍結処理
+            if result == InappropriateType.TABOO:
+                request.user.is_ban = True
+                request.user.save()
+                return Response(
+                    data={
+                        "error": {
+                            "alert": True,
+                            "type": "conflict room post",
+                            "title": "不適切な単語が含まれていたため、ルームを作成できませんでした",
+                            "message": "相手を傷つけるような表現が確認された場合、アカウントが予告なく凍結される可能性があります。",
+                        }
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
             room_serializer.save()
 
             tag_keys = request.data.get("tags", None)
@@ -258,6 +290,10 @@ rooms_api_view = RoomsAPIView.as_view()
 
 
 class RoomsDetailAPIView(views.APIView):
+    inappropriate_words_csv_path = (
+        "fullfii/lib/inappropriate_checker/inappropriate_words.csv"
+    )
+
     @swagger_auto_schema(
         operation_summary="ルームの修正",
         operation_id="rooms_detail_PATCH",
@@ -290,6 +326,30 @@ class RoomsDetailAPIView(views.APIView):
 
         room_serializer = RoomSerializer(instance=room, data=request.data, partial=True)
         if room_serializer.is_valid():
+            if "name" in request.data:
+                inappropriate_checker = InappropriateRoomNameChecker.create(
+                    self.inappropriate_words_csv_path,
+                    sender=request.user,
+                )
+                result = inappropriate_checker.check(
+                    request.data["name"], shouldSendSlack=True
+                )
+                # タブーだった場合, 凍結処理
+                if result == InappropriateType.TABOO:
+                    request.user.is_ban = True
+                    request.user.save()
+                    return Response(
+                        data={
+                            "error": {
+                                "alert": True,
+                                "type": "conflict room patch",
+                                "title": "不適切な単語が含まれていたため、ルームを修正できませんでした",
+                                "message": "相手を傷つけるような表現が確認された場合、アカウントが予告なく凍結される可能性があります。",
+                            }
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
             room_serializer.save()
 
             tag_keys = request.data.get("tags", None)

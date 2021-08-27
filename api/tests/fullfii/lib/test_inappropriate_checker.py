@@ -2,14 +2,17 @@ from django.test import TestCase
 
 from account.tests.factories import AccountFactory
 from chat.tests.factories import RoomV4Factory
-from fullfii.lib.inappropriate_checker import InappropriateChecker, InappropriateType
+from fullfii.lib.inappropriate_checker import (
+    InappropriateMessageChecker,
+    InappropriateType,
+)
 
 
 class TestInappropriateChecker(TestCase):
     def setUp(self):
         account_factory = AccountFactory.create()
         room_v4_factory = RoomV4Factory.create()
-        self.inappropriate_checker = InappropriateChecker.create(
+        self.inappropriate_checker = InappropriateMessageChecker.create(
             "fullfii/lib/inappropriate_checker/test_inappropriate_words.csv",
             sender=account_factory,
             room=room_v4_factory,
@@ -17,7 +20,7 @@ class TestInappropriateChecker(TestCase):
 
     def test_create(self):
         self.assertEquals(
-            type(self.inappropriate_checker), InappropriateChecker, msg="型チェック"
+            type(self.inappropriate_checker), InappropriateMessageChecker, msg="型チェック"
         )
         self.assertEquals(
             self.inappropriate_checker.taboo_word_list,
@@ -34,7 +37,7 @@ class TestInappropriateChecker(TestCase):
         with self.assertRaises(KeyError):
             account_factory = AccountFactory.create()
             room_v4_factory = RoomV4Factory.create()
-            InappropriateChecker.create(
+            InappropriateMessageChecker.create(
                 "fullfii/lib/inappropriate_checker/test_keyerror_inappropriate_words.csv",
                 sender=account_factory,
                 room=room_v4_factory,
